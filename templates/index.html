@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Sentiment Analyzer — AI Emotion Detection</title>
+    <meta name="description" content="Upload audio and analyze emotions with AI. See real-time emotion timeline, pinpoint exactly when emotions change.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Animated background blobs -->
+    <div class="bg-effects">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+        <!-- ===== HEADER ===== -->
+        <header class="fade-in">
+            <div class="logo-badge">🎙️</div>
+            <h1>Voice Sentiment <span class="gradient-text">Analyzer</span></h1>
+            <p class="subtitle">AI-powered emotion detection from speech — pinpoint every mood shift</p>
+            <div class="header-chips">
+                <span class="chip">🧠 Deep Learning</span>
+                <span class="chip">📊 Real-time Charts</span>
+                <span class="chip">⏱️ Timestamp Tracking</span>
+            </div>
+        </header>
+
+        <!-- ===== UPLOAD SECTION ===== -->
+        <div class="upload-card fade-in" id="dropZone">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="drop-area" id="dropArea">
+                    <div class="drop-icon-wrapper">
+                        <div class="drop-icon">🎵</div>
+                        <div class="drop-ripple"></div>
+                    </div>
+                    <p class="drop-title">Drag & Drop your audio file here</p>
+                    <p class="drop-subtitle">or click to browse • Supports .wav, .mp3, .ogg, .flac</p>
+                    <input type="file" id="audioFile" name="audio" accept="audio/*" required>
+                    <div class="selected-file" id="selectedFile" style="display:none;">
+                        <span class="file-badge">🎧</span>
+                        <span id="fileName"></span>
+                        <button type="button" class="remove-file" id="removeFile">✕</button>
+                    </div>
+                </div>
+                <button type="submit" class="analyze-btn" id="analyzeBtn" disabled>
+                    <span class="btn-icon">⚡</span>
+                    <span class="btn-text">Analyze Emotions</span>
+                    <span class="btn-arrow">→</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- ===== LOADING ===== -->
+        <div id="loading" class="loading-section" style="display: none;">
+            <div class="loading-card">
+                <div class="pulse-ring"></div>
+                <div class="loading-icon">🧠</div>
+                <h3>Analyzing Emotions...</h3>
+                <p>Converting speech to text and detecting emotions</p>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progressBar"></div>
+                </div>
+                <p class="progress-text" id="progressText">Processing audio chunks...</p>
+            </div>
+        </div>
+
+        <!-- ===== DASHBOARD ===== -->
+        <div id="dashboard" style="display: none;">
+
+            <!-- Overall Summary Cards -->
+            <div class="section-block fade-in-up">
+                <div class="section-header">
+                    <h2>📊 Emotion Overview</h2>
+                    <span class="section-badge" id="totalSegments"></span>
+                </div>
+                <div class="summary-cards" id="summaryCards"></div>
+            </div>
+
+            <!-- Emotion Timeline Chart -->
+            <div class="section-block fade-in-up">
+                <div class="section-header">
+                    <h2>📈 Emotion Timeline</h2>
+                    <p class="section-desc">Track how emotions evolve throughout the audio</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="emotionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Two column: Pie + Top Emotion -->
+            <div class="two-col">
+                <div class="section-block fade-in-up">
+                    <div class="section-header">
+                        <h2>🍩 Distribution</h2>
+                    </div>
+                    <div class="chart-container pie-container">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+                <div class="section-block fade-in-up">
+                    <div class="section-header">
+                        <h2>🏆 Dominant Emotion</h2>
+                    </div>
+                    <div class="dominant-emotion" id="dominantEmotion"></div>
+                </div>
+            </div>
+
+            <!-- Detailed Timeline Table -->
+            <div class="section-block fade-in-up">
+                <div class="section-header">
+                    <h2>🕐 Detailed Timeline</h2>
+                    <p class="section-desc">Exact timestamps where each emotion was detected</p>
+                </div>
+                <div class="table-wrapper">
+                    <table id="timelineTable">
+                        <thead>
+                            <tr>
+                                <th>⏱️ Time</th>
+                                <th>💬 Transcript</th>
+                                <th>😊 Emotion</th>
+                                <th>📊 Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody id="timelineBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Analyze Another -->
+            <div class="analyze-another fade-in-up">
+                <button class="analyze-btn secondary" id="resetBtn">
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-text">Analyze Another Audio</span>
+                </button>
+            </div>
+        </div>
+
+        <footer>
+            <p>Built with ❤️ using Flask, HuggingFace Transformers & Chart.js</p>
+        </footer>
+    </div>
+
+    <script>
+        const emotionColors = {
+            'anger':    { bg: 'rgba(239, 68, 68, 0.75)',   border: '#ef4444',  glow: 'rgba(239, 68, 68, 0.3)',  emoji: '😡' },
+            'disgust':  { bg: 'rgba(168, 85, 247, 0.75)',  border: '#a855f7',  glow: 'rgba(168, 85, 247, 0.3)', emoji: '🤢' },
+            'fear':     { bg: 'rgba(107, 114, 128, 0.75)', border: '#6b7280',  glow: 'rgba(107, 114, 128, 0.3)',emoji: '😨' },
+            'joy':      { bg: 'rgba(34, 197, 94, 0.75)',   border: '#22c55e',  glow: 'rgba(34, 197, 94, 0.3)',  emoji: '😊' },
+            'neutral':  { bg: 'rgba(59, 130, 246, 0.75)',  border: '#3b82f6',  glow: 'rgba(59, 130, 246, 0.3)', emoji: '😐' },
+            'sadness':  { bg: 'rgba(99, 102, 241, 0.75)',  border: '#6366f1',  glow: 'rgba(99, 102, 241, 0.3)', emoji: '😢' },
+            'surprise': { bg: 'rgba(245, 158, 11, 0.75)',  border: '#f59e0b',  glow: 'rgba(245, 158, 11, 0.3)', emoji: '😲' },
+            'unknown':  { bg: 'rgba(156, 163, 175, 0.75)', border: '#9ca3af',  glow: 'rgba(156, 163, 175, 0.3)',emoji: '❓' }
+        };
+
+        // === Drag & Drop ===
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('audioFile');
+        const selectedFile = document.getElementById('selectedFile');
+        const fileNameSpan = document.getElementById('fileName');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+
+        ['dragenter', 'dragover'].forEach(e => {
+            dropArea.addEventListener(e, (ev) => { ev.preventDefault(); dropArea.classList.add('drag-over'); });
+        });
+        ['dragleave', 'drop'].forEach(e => {
+            dropArea.addEventListener(e, (ev) => { ev.preventDefault(); dropArea.classList.remove('drag-over'); });
+        });
+        dropArea.addEventListener('drop', (e) => {
+            fileInput.files = e.dataTransfer.files;
+            showSelectedFile(e.dataTransfer.files[0]);
+        });
+        dropArea.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) showSelectedFile(fileInput.files[0]);
+        });
+        document.getElementById('removeFile').addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.value = '';
+            selectedFile.style.display = 'none';
+            analyzeBtn.disabled = true;
+        });
+
+        function showSelectedFile(file) {
+            fileNameSpan.textContent = file.name;
+            selectedFile.style.display = 'flex';
+            analyzeBtn.disabled = false;
+        }
+
+        // === Form Submit ===
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!fileInput.files.length) return;
+
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('dashboard').style.display = 'none';
+            analyzeBtn.disabled = true;
+            startProgress();
+
+            const formData = new FormData();
+            formData.append('audio', fileInput.files[0]);
+
+            try {
+                const resp = await fetch('/analyze', { method: 'POST', body: formData });
+                const results = await resp.json();
+                if (results.error) { alert('Error: ' + results.error); }
+                else { displayDashboard(results); }
+            } catch (err) {
+                alert('Something went wrong: ' + err.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                analyzeBtn.disabled = false;
+                stopProgress();
+            }
+        });
+
+        // === Fake progress bar animation ===
+        let progressInterval;
+        function startProgress() {
+            let w = 0;
+            const bar = document.getElementById('progressBar');
+            const texts = ['Splitting audio into chunks...', 'Converting speech to text...', 'Detecting emotions with AI...', 'Generating charts...'];
+            let ti = 0;
+            progressInterval = setInterval(() => {
+                w = Math.min(w + Math.random() * 3, 90);
+                bar.style.width = w + '%';
+                if (w > (ti + 1) * 22 && ti < texts.length - 1) {
+                    ti++;
+                    document.getElementById('progressText').textContent = texts[ti];
+                }
+            }, 500);
+        }
+        function stopProgress() {
+            clearInterval(progressInterval);
+            document.getElementById('progressBar').style.width = '100%';
+        }
+
+        // === Reset ===
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            document.getElementById('dashboard').style.display = 'none';
+            fileInput.value = '';
+            selectedFile.style.display = 'none';
+            analyzeBtn.disabled = true;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // === Dashboard Rendering ===
+        let lineChart, donutChart;
+
+        function displayDashboard(results) {
+            document.getElementById('dashboard').style.display = 'block';
+
+            // Animate sections in
+            document.querySelectorAll('.fade-in-up').forEach((el, i) => {
+                el.style.animationDelay = (i * 0.12) + 's';
+                el.classList.add('animate');
+            });
+
+            // --- Summary Cards ---
+            const counts = {};
+            results.forEach(r => counts[r.top_emotion] = (counts[r.top_emotion] || 0) + 1);
+
+            document.getElementById('totalSegments').textContent = results.length + ' segments analyzed';
+
+            const cardsDiv = document.getElementById('summaryCards');
+            cardsDiv.innerHTML = '';
+            Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([em, ct]) => {
+                const c = emotionColors[em] || emotionColors['unknown'];
+                const card = document.createElement('div');
+                card.className = 'summary-card';
+                card.style.setProperty('--card-glow', c.glow);
+                card.style.setProperty('--card-border', c.border);
+                card.innerHTML = `
+                    <div class="card-emoji">${c.emoji}</div>
+                    <div class="card-emotion">${em}</div>
+                    <div class="card-count">${ct} segment${ct > 1 ? 's' : ''}</div>
+                    <div class="card-bar" style="background:${c.border};width:${(ct / results.length * 100)}%"></div>
+                `;
+                cardsDiv.appendChild(card);
+            });
+
+            // --- Dominant Emotion ---
+            const dominant = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+            const dc = emotionColors[dominant[0]] || emotionColors['unknown'];
+            document.getElementById('dominantEmotion').innerHTML = `
+                <div class="dominant-emoji">${dc.emoji}</div>
+                <div class="dominant-label">${dominant[0]}</div>
+                <div class="dominant-pct">${Math.round(dominant[1] / results.length * 100)}% of audio</div>
+                <div class="dominant-glow" style="background:${dc.glow}"></div>
+            `;
+
+            // --- Line Chart ---
+            const labels = results.map(r => r.timestamp);
+            const allEmotions = ['anger', 'disgust', 'fear', 'joy', 'neutral', 'sadness', 'surprise'];
+            const datasets = allEmotions.map(em => ({
+                label: em.charAt(0).toUpperCase() + em.slice(1),
+                data: results.map(r => r.all_emotions?.[em] || 0),
+                borderColor: emotionColors[em].border,
+                backgroundColor: emotionColors[em].bg,
+                fill: false,
+                tension: 0.4,
+                pointRadius: 5,
+                pointHoverRadius: 9,
+                borderWidth: 2.5,
+                pointBackgroundColor: emotionColors[em].border
+            }));
+
+            if (lineChart) lineChart.destroy();
+            lineChart = new Chart(document.getElementById('emotionChart').getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'top', labels: { color: '#cbd5e1', font: { family: 'Inter', size: 12 }, usePointStyle: true, pointStyle: 'circle', padding: 16 } },
+                        tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', titleFont: { family: 'Inter' }, bodyFont: { family: 'Inter' }, padding: 12, cornerRadius: 10,
+                            callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y}%` }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#64748b', font: { family: 'Inter', size: 11 } }, grid: { color: 'rgba(148,163,184,0.08)' } },
+                        y: { title: { display: true, text: 'Confidence %', color: '#64748b', font: { family: 'Inter' } }, ticks: { color: '#64748b' }, grid: { color: 'rgba(148,163,184,0.08)' }, min: 0, max: 100 }
+                    }
+                }
+            });
+
+            // --- Pie Chart ---
+            const pieLabels = Object.keys(counts);
+            const pieBg = pieLabels.map(e => (emotionColors[e] || emotionColors['unknown']).bg);
+            const pieBd = pieLabels.map(e => (emotionColors[e] || emotionColors['unknown']).border);
+
+            if (donutChart) donutChart.destroy();
+            donutChart = new Chart(document.getElementById('pieChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: pieLabels.map(e => e.charAt(0).toUpperCase() + e.slice(1)),
+                    datasets: [{ data: Object.values(counts), backgroundColor: pieBg, borderColor: pieBd, borderWidth: 2, hoverOffset: 12 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '62%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { family: 'Inter' }, padding: 16, usePointStyle: true, pointStyle: 'rectRounded' } }
+                    }
+                }
+            });
+
+            // --- Table ---
+            const tbody = document.getElementById('timelineBody');
+            tbody.innerHTML = '';
+            results.forEach((r, i) => {
+                const c = emotionColors[r.top_emotion] || emotionColors['unknown'];
+                const row = document.createElement('tr');
+                row.style.animationDelay = (i * 0.05) + 's';
+                row.className = 'table-row-animate';
+                row.innerHTML = `
+                    <td><span class="time-badge">${r.timestamp}</span></td>
+                    <td class="transcript-cell" title="${r.text}">${r.text}</td>
+                    <td>
+                        <span class="emotion-badge" style="background:${c.bg};border:1px solid ${c.border};box-shadow:0 0 12px ${c.glow}">
+                            ${c.emoji} ${r.top_emotion}
+                        </span>
+                    </td>
+                    <td>
+                        <div class="confidence-wrapper">
+                            <div class="confidence-track">
+                                <div class="confidence-fill" style="width:${r.confidence}%;background:linear-gradient(90deg,${c.border},${c.bg})"></div>
+                            </div>
+                            <span class="confidence-val">${r.confidence}%</span>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            // Scroll into view
+            document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    </script>
+</body>
+</html>
